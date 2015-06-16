@@ -1,4 +1,4 @@
-/*! cornerstoneTools - v0.6.2 - 2015-06-15 | (c) 2014 Chris Hafey | https://github.com/chafey/cornerstoneTools */
+/*! cornerstoneTools - v0.6.2 - 2015-06-16 | (c) 2014 Chris Hafey | https://github.com/chafey/cornerstoneTools */
 // Begin Source: src/inputSources/mouseWheelInput.js
 var cornerstoneTools = (function ($, cornerstone, cornerstoneTools) {
 
@@ -1117,6 +1117,7 @@ var cornerstoneTools = (function ($, cornerstone, cornerstoneMath, cornerstoneTo
             $(touchEventData.element).off('CornerstoneToolsTouchDrag', touchMoveCallback);
 
             cornerstoneTools.touchMoveHandle(touchEventData, measurementData.handles.end, function () {
+                measurementData.active = false;
                 if (cornerstoneTools.anyHandlesOutsideImage(touchEventData, measurementData.handles)) {
                     // delete the measurement
                     cornerstoneTools.removeToolState(touchEventData.element, touchToolInterface.toolType, measurementData);
@@ -1126,7 +1127,6 @@ var cornerstoneTools = (function ($, cornerstone, cornerstoneMath, cornerstoneTo
         }
 
         function touchDownActivateCallback(e, eventData) {
-            console.log("touchDownActivateCallback");
             addNewMeasurement(eventData);
             return false; // false = causes jquery to preventDefault() and stopPropagation() this event
         }
@@ -1169,14 +1169,15 @@ var cornerstoneTools = (function ($, cornerstone, cornerstoneMath, cornerstoneTo
         }
 
         function touchStartCallback(e, eventData) {
-            console.log("touchStartCallback");
             var data;
 
             function handleDoneMove() {
+                data.active = false;
                 if (cornerstoneTools.anyHandlesOutsideImage(eventData, data.handles)) {
                     // delete the measurement
                     cornerstoneTools.removeToolState(eventData.element, touchToolInterface.toolType, data);
                 }
+                cornerstone.updateImage(eventData.element);
                 $(eventData.element).on('CornerstoneToolsTouchDrag', touchMoveCallback);
             }
 
@@ -1192,7 +1193,7 @@ var cornerstoneTools = (function ($, cornerstone, cornerstoneMath, cornerstoneTo
                     var handle = getHandleNearImagePoint(data, coords);
                     if (handle !== undefined) {
                         $(eventData.element).off('CornerstoneToolsTouchDrag', touchMoveCallback);
-
+                        data.active = true;
                         cornerstoneTools.touchMoveHandle(e, handle, handleDoneMove);
                         e.stopImmediatePropagation();
                         return false; // false = causes jquery to preventDefault() and stopPropagation() this event
@@ -1206,8 +1207,8 @@ var cornerstoneTools = (function ($, cornerstone, cornerstoneMath, cornerstoneTo
                     data = toolData.data[i];
                     if (touchToolInterface.pointNearTool(data, coords)) {
                         $(eventData.element).off('CornerstoneToolsTouchDrag', touchMoveCallback);
-
                         cornerstoneTools.touchMoveAllHandles(e, data, toolData, true);
+                        $(eventData.element).on('CornerstoneToolsTouchDrag', touchMoveCallback);
                         e.stopImmediatePropagation();
                         return false; // false = causes jquery to preventDefault() and stopPropagation() this event
                     }
@@ -1696,6 +1697,7 @@ var cornerstoneTools = (function ($, cornerstone, cornerstoneMath, cornerstoneTo
         var color;
         var lineWidth = cornerstoneTools.toolStyle.getToolWidth();
         var font = cornerstoneTools.textStyle.getFont();
+        var fontHeight = cornerstoneTools.textStyle.getFontSize();
 
         for (var i = 0; i < toolData.data.length; i++) {
             context.save();
@@ -1728,10 +1730,44 @@ var cornerstoneTools = (function ($, cornerstone, cornerstoneMath, cornerstoneTo
                 context.fillStyle = color;
                 context.font = font;
 
-                var textCoords = {
-                    x: (handleStartCanvas.x + handleEndCanvas.x) / 2,
-                    y: (handleStartCanvas.y + handleEndCanvas.y) / 2
+
+                var distance = 4;
+
+                // TODO: add 2 dimensional vector operations to cornerstoneMath
+                var vector;
+
+                var displacement = {
+                    x: distance,
+                    y: distance
                 };
+
+                vector = {
+                    x: handleEndCanvas.x - handleStartCanvas.x,
+                    y: handleEndCanvas.y - handleStartCanvas.y
+                };
+
+                var textCoords;
+                if (config.arrowFirst) {
+                    // Fix text placement if arrow faces right
+                    if (vector.x < 0) {
+                        displacement.x = -displacement.x - context.measureText(data.annotationText).width;
+                    }
+
+                    textCoords = {
+                        x: vector.x + handleStartCanvas.x + displacement.x,
+                        y: vector.y + handleStartCanvas.y + displacement.y
+                    };
+                } else {
+                    // Fix text placement if arrow faces right
+                    if (vector.x > 0) {
+                        displacement.x = -displacement.x - context.measureText(data.annotationText).width;
+                    }
+
+                    textCoords = {
+                        x: -vector.x + handleEndCanvas.x + displacement.x,
+                        y: -vector.y + handleEndCanvas.y + displacement.y
+                    };
+                }
 
                 context.fillText(data.annotationText, textCoords.x, textCoords.y);
             }
@@ -2948,6 +2984,39 @@ var cornerstoneTools = (function ($, cornerstone, cornerstoneMath, cornerstoneTo
 
 // End Source; src/imageTools/highlight.js
 
+// Begin Source: src/imageTools/keyboardTool.js
+var cornerstoneTools = (function ($, cornerstone, cornerstoneTools) {
+
+    "use strict";
+
+    if (cornerstoneTools === undefined) {
+        cornerstoneTools = {};
+    }
+
+    function keyboardTool(keyDownCallback) {
+        var configuration = {};
+
+        var toolInterface = {
+            activate: function (element) {
+                $(element).off('CornerstoneToolsKeyDown', keyDownCallback);
+                $(element).on("CornerstoneToolsKeyDown", keyDownCallback);
+            },
+            disable: function (element) { $(element).off('CornerstoneToolsKeyDown', keyDownCallback); },
+            enable: function (element) { $(element).off('CornerstoneToolsKeyDown', keyDownCallback); },
+            deactivate: function (element) { $(element).off('CornerstoneToolsKeyDown', keyDownCallback); },
+            getConfiguration: function () { return configuration; },
+            setConfiguration: function (config) { configuration = config; }
+        };
+        return toolInterface;
+    }
+
+    // module exports
+    cornerstoneTools.keyboardTool = keyboardTool;
+
+    return cornerstoneTools;
+}($, cornerstone, cornerstoneTools));
+// End Source; src/imageTools/keyboardTool.js
+
 // Begin Source: src/imageTools/lengthTool.js
 var cornerstoneTools = (function ($, cornerstone, cornerstoneMath, cornerstoneTools) {
 
@@ -3146,11 +3215,16 @@ var cornerstoneTools = (function ($, cornerstone, cornerstoneTools) {
 
         // Fill it with the pixels that the mouse is clicking on
         zoomCtx.fillRect(0, 0, magnify.width, magnify.height);
-        zoomCtx.drawImage(canvas, canvasLocation.x - magnifySize / 4, canvasLocation.y - magnifySize / 4, magnifySize, magnifySize, 0, 0, magnifySize * magnificationLevel, magnifySize * magnificationLevel);
+
+        var size = magnifySize * magnificationLevel;
+        var startX = canvasLocation.x - 0.5 * magnifySize / magnificationLevel;
+        var startY = canvasLocation.y - 0.5 * magnifySize / magnificationLevel;
+
+        zoomCtx.drawImage(canvas, startX, startY, magnifySize, magnifySize, 0, 0, size, size);
 
         // Place the magnification tool at the same location as the pointer
-        magnify.style.top = canvasLocation.y - magnifySize / 2 + "px";
-        magnify.style.left = canvasLocation.x - magnifySize / 2 + "px";
+        magnify.style.top = canvasLocation.y - 0.45 * magnifySize + "px";
+        magnify.style.left = canvasLocation.x - 0.45 * magnifySize + "px";
         magnify.style.display = "block";
 
         // Hide the mouse cursor, so the user can see better
@@ -4643,6 +4717,70 @@ var cornerstoneTools = (function ($, cornerstone, cornerstoneTools) {
 
 // End Source; src/imageTools/zoom.js
 
+// Begin Source: src/inputSources/keyboardInput.js
+var cornerstoneTools = (function ($, cornerstone, cornerstoneTools) {
+
+    "use strict";
+
+    if (cornerstoneTools === undefined) {
+        cornerstoneTools = {};
+    }
+    var mouseX,
+        mouseY;
+
+    function keyPress(e) {
+        var element = e.currentTarget;
+        var startingCoords = cornerstone.pageToPixel(element, mouseX, mouseY);
+
+        e = window.event || e; // old IE support
+
+        var keyPressData = {
+            element: element,
+            viewport: cornerstone.getViewport(element),
+            image: cornerstone.getEnabledElement(element).image,
+            pageX: mouseX,
+            pageY: mouseY,
+            imageX: startingCoords.x,
+            imageY: startingCoords.y,
+            keyCode: e.keyCode,
+            which: e.which
+        };
+
+        if (e.type === "keydown") {
+            $(element).trigger("CornerstoneToolsKeyDown", keyPressData);
+        } else if (e.type === "keypress") {
+            $(element).trigger("CornerstoneToolsKeyPress", keyPressData);
+        } else if (e.type === "keyup") {
+            $(element).trigger("CornerstoneToolsKeyUp", keyPressData);
+        }
+    }
+
+    function mouseMove(e) {
+        mouseX = e.pageX || e.originalEvent.pageX;
+        mouseY = e.pageY || e.originalEvent.pageY;
+    }
+
+    var keyboardEvent = "keydown keypress keyup";
+
+    function enable(element) {
+        $(element).bind(keyboardEvent, keyPress);
+        $(element).on("mousemove", mouseMove);
+    }
+
+    function disable(element) {
+        $(element).unbind(keyboardEvent, keyPress);
+    }
+
+    // module exports
+    cornerstoneTools.keyboardInput = {
+        enable: enable,
+        disable: disable
+    };
+
+    return cornerstoneTools;
+}($, cornerstone, cornerstoneTools));
+// End Source; src/inputSources/keyboardInput.js
+
 // Begin Source: src/manipulators/anyHandlesOutsideImage.js
 var cornerstoneTools = (function ($, cornerstone, cornerstoneMath, cornerstoneTools) {
 
@@ -4850,14 +4988,14 @@ var cornerstoneTools = (function ($, cornerstone, cornerstoneTools) {
 
         function touchDragCallback(e, eventData) {
             handle.active = true;
-            var toucheMoveData = eventData;
-            handle.x = toucheMoveData.currentPoints.image.x;
-            handle.y = toucheMoveData.currentPoints.image.y;
+            var touchMoveData = eventData;
+            handle.x = touchMoveData.currentPoints.image.x;
+            handle.y = touchMoveData.currentPoints.image.y;
             cornerstone.updateImage(element);
         }
         $(element).on("CornerstoneToolsTouchDrag", touchDragCallback);
 
-        function touchendCallback(mouseMoveData) {
+        function touchEndCallback(mouseMoveData) {
             handle.active = false;
             $(element).off("CornerstoneToolsTouchDrag", touchDragCallback);
             $(element).off("CornerstoneToolsDragEnd", touchEndCallback);
@@ -5404,8 +5542,8 @@ var cornerstoneTools = (function ($, cornerstone, cornerstoneTools) {
 
         var referenceLine = cornerstoneTools.referenceLines.calculateReferenceLine(targetImagePlane, referenceImagePlane);
 
-        var refLineStartCanvas = cornerstone.pixelToCanvas(eventData.element, referenceLine.handles.start);
-        var refLineEndCanvas = cornerstone.pixelToCanvas(eventData.element, referenceLine.handles.end);
+        var refLineStartCanvas = cornerstone.pixelToCanvas(eventData.element, referenceLine.start);
+        var refLineEndCanvas = cornerstone.pixelToCanvas(eventData.element, referenceLine.end);
 
         var color = cornerstoneTools.toolColors.getActiveColor();
         var lineWidth = cornerstoneTools.toolStyle.getToolWidth();
@@ -5460,16 +5598,17 @@ var cornerstoneTools = (function ($, cornerstone, cornerstoneTools) {
 
         var playClipToolData = cornerstoneTools.getToolState(element, toolType);
         var playClipData;
+
         if (playClipToolData === undefined || playClipToolData.data.length === 0) {
             playClipData = {
                 intervalId: undefined,
                 framesPerSecond: framesPerSecond,
                 lastFrameTimeStamp: undefined,
-                frameRate: 0
+                frameRate: 0,
+                loop: true
             };
             cornerstoneTools.addToolState(element, toolType, playClipData);
-        }
-        else {
+        } else {
             playClipData = playClipToolData.data[0];
             playClipData.framesPerSecond = framesPerSecond;
         }
@@ -5482,16 +5621,24 @@ var cornerstoneTools = (function ($, cornerstone, cornerstoneTools) {
         playClipData.intervalId = setInterval(function () {
 
             var newImageIdIndex = stackData.currentImageIdIndex;
+
             if (playClipData.framesPerSecond > 0) {
                 newImageIdIndex++;
             } else {
                 newImageIdIndex--;
             }
 
+            if (!playClipData.loop && (newImageIdIndex >= stackData.imageIds.length || newImageIdIndex < 0)) {
+                clearInterval(playClipData.intervalId);
+                playClipData.intervalId = undefined;
+                return;
+            }
+
             // loop around if we go outside the stack
             if (newImageIdIndex >= stackData.imageIds.length) {
                 newImageIdIndex = 0;
             }
+
             if (newImageIdIndex < 0) {
                 newImageIdIndex = stackData.imageIds.length - 1;
             }
@@ -5515,8 +5662,7 @@ var cornerstoneTools = (function ($, cornerstone, cornerstoneTools) {
         var playClipData;
         if (playClipToolData === undefined || playClipToolData.data.length === 0) {
             return;
-        }
-        else {
+        } else {
             playClipData = playClipToolData.data[0];
         }
 
@@ -5920,6 +6066,68 @@ var cornerstoneTools = (function ($, cornerstone, cornerstoneTools) {
     return cornerstoneTools;
 }($, cornerstone, cornerstoneTools));
 // End Source; src/stackTools/stackScroll.js
+
+// Begin Source: src/stackTools/stackScrollKeyboard.js
+var cornerstoneTools = (function ($, cornerstone, cornerstoneTools) {
+
+    "use strict";
+
+    if (cornerstoneTools === undefined) {
+        cornerstoneTools = {};
+    }
+
+    var toolType = "stackScrollKeyboard";
+
+    var keys = {
+        UP: 38,
+        DOWN: 40
+    };
+
+    function scroll(element, images) {
+        var toolData = cornerstoneTools.getToolState(element, 'stack');
+        if (toolData === undefined || toolData.data === undefined || toolData.data.length === 0) {
+            return;
+        }
+
+        var stackData = toolData.data[0];
+
+        var newImageIdIndex = stackData.currentImageIdIndex + images;
+        newImageIdIndex = Math.min(stackData.imageIds.length - 1, newImageIdIndex);
+        newImageIdIndex = Math.max(0, newImageIdIndex);
+
+        if (newImageIdIndex !== stackData.currentImageIdIndex) {
+            var viewport = cornerstone.getViewport(element);
+            cornerstone.loadAndCacheImage(stackData.imageIds[newImageIdIndex]).then(function (image) {
+                stackData = toolData.data[0];
+                if (stackData.newImageIdIndex !== newImageIdIndex) {
+                    stackData.currentImageIdIndex = newImageIdIndex;
+                    cornerstone.displayImage(element, image, viewport);
+                }
+            });
+        }
+    }
+
+    function keyDownCallback(e, eventData) {
+        var keyCode = eventData.keyCode;
+        if (keyCode !== keys.UP && keyCode !== keys.DOWN) {
+            return;
+        }
+
+        var images = 1;
+        if (keyCode === keys.DOWN) {
+            images = -1;
+        }
+        scroll(eventData.element, images);
+        //console.log('Scrolled: ' + images + ' image(s)');
+    }
+
+
+    // module/private exports
+    cornerstoneTools.stackScrollKeyboard = cornerstoneTools.keyboardTool(keyDownCallback);
+
+    return cornerstoneTools;
+}($, cornerstone, cornerstoneTools));
+// End Source; src/stackTools/stackScrollKeyboard.js
 
 // Begin Source: src/stateManagement/imageIdSpecificStateManager.js
 var cornerstoneTools = (function ($, cornerstone, cornerstoneTools) {
